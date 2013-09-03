@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE sqlMap PUBLIC "-//ibatis.apache.org//DTD SQL Map 2.0//EN" "http://ibatis.apache.org/dtd/sql-map-2.dtd" >
+<sqlMap namespace="store">
+
+    <typeAlias alias="store" type="com.wenchanter.thales.core.pojo.Store" />
+
+    <sql id="store">
+        select name, url, del
+        from access_white
+    </sql>
+
+    <select id="selectStore" resultClass="store" parameterClass="java.lang.String">
+        <include refid="store" />
+        where name = #name#
+    </select>
+
+    <!--  
+    <select id="getAccessWhite" resultClass="AccessWhite" parameterClass="java.util.Map">
+        <include refid="access" />
+        <dynamic prepend="where">
+            <isNotEmpty prepend="and" property="type">
+                type = #type#
+            </isNotEmpty>
+            <isNotEmpty prepend="and" property="userid">
+                userid = #userid#
+            </isNotEmpty>
+        </dynamic>
+        <isNotEmpty property="orderby">
+            order by $orderby$ $seq$
+        </isNotEmpty>
+    </select>
+
+    <insert id="insertAccessWhite" parameterClass="AccessWhite">
+        insert into access_white(type,userid,createtime,createuserid) values(#type#,#userid#,#createtime#,#createuserid#)
+    </insert>
+    
+    <delete id="delAccessWhite" parameterClass="java.lang.Integer">
+        delete from access_white where id=#id#
+    </delete>
+    
+    -->
+</sqlMap>
