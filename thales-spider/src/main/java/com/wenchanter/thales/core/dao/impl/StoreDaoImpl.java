@@ -15,7 +15,6 @@ public class StoreDaoImpl extends BaseDao implements StoreDao{
 		this.setNamespace("store");
 	}
 
-	@Override
 	public Store selectStore(String name) {
 		Store awList = (Store)this.queryForObject("selectStore", name);
 		return awList;
@@ -27,8 +26,10 @@ public class StoreDaoImpl extends BaseDao implements StoreDao{
 	public static void main(String[] args) {
 
 		ApplicationContext act = new ClassPathXmlApplicationContext("thales.xml");
-		StoreDao s = (StoreDao)act.getBean("storeDao");
-		s.selectStore("a");
+		StoreDao s = (StoreDao)act.getBean("storeDaoImpl");
+		Store a = s.selectStore("a");
+		System.out.println(a.getName());
+		System.out.println(a.getUrl());
 
 	}
 
