@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:p="http://www.springframework.org/schema/p"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:mvc="http://www.springframework.org/schema/mvc" xmlns:aop="http://www.springframework.org/schema/aop"
+	xsi:schemaLocation="
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans-3.0.xsd
+        http://www.springframework.org/schema/context
+        http://www.springframework.org/schema/context/spring-context-3.0.xsd
+        http://www.springframework.org/schema/mvc
+        http://www.springframework.org/schema/mvc/spring-mvc-3.0.xsd
+    ">
+
+	<!-- spring 注解 -->
+	<!-- <context:annotation-config /> -->
+	<context:component-scan base-package="com.wenchanter.thales" />
+
+	<!-- ibatis集成 -->
+	<bean id="sqlMapClient" class="org.springframework.orm.ibatis.SqlMapClientFactoryBean">
+		<property name="configLocation" value="classpath:sql_map_config.xml" />
+		<property name="dataSource" ref="dataSource" />
+	</bean>
+
+	<!-- 数据库配置begin -->
+	<bean
+		class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+		<property name="locations">
+			<list>
+				<value>classpath:/jdbc.properties</value>
+			</list>
+		</property>
+	</bean>
+	<!-- jdbc可用 <bean id="dataSource" class="org.springframework.jdbc.datasource.DriverManagerDataSource"> 
+		<property name="driverClassName" value="${main.master.jdbc.driverClass}" 
+		/> <property name="url" value="${main.master.jdbc.jdbcUrl}" /> <property 
+		name="username" value="${main.master.jdbc.user}" /> <property name="password" 
+		value="${main.master.jdbc.password}" /> </bean> -->
+
+	<bean id="parentDataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource">
+		<property name="maxPoolSize" value="${jdbc.maxPoolSize}" />
+		<property name="minPoolSize" value="${jdbc.minPoolSize}" />
+		<property name="initialPoolSize" value="${jdbc.initialPoolSize}" />
+		<property name="acquireIncrement" value="${jdbc.acquireIncrement}" />
+		<property name="maxIdleTime" value="${jdbc.maxIdleTime}" />
+		<property name="idleConnectionTestPeriod" value="${jdbc.idleConnectionTestPeriod}" />
+	</bean>
+	<bean id="masterDataSource" parent="parentDataSource">
+		<property name="driverClass" value="${main.master.jdbc.driverClass}" />
+		<property name="jdbcUrl" value="${main.master.jdbc.jdbcUrl}" />
+		<property name="user" value="${main.master.jdbc.user}" />
+		<property name="password" value="${main.master.jdbc.password}" />
+	</bean>
+	<!-- main从数据源 -->
+	<bean id="slaveDataSource" parent="parentDataSource">
+		<property name="driverClass" value="${main.slave.jdbc.driverClass}" />
+		<property name="jdbcUrl" value="${main.slave.jdbc.jdbcUrl}" />
+		<property name="user" value="${main.slave.jdbc.user}" />
+		<property name="password" value="${main.slave.jdbc.password}" />
+	</bean>
+
+	<!-- 用于动态选择主、从数据库的数据源实现 -->
+	<bean id="dataSource" class="com.wenchanter.thales.core.aop.DynamicDataSource">
+		<property name="targetDataSources">
+			<map key-type="java.lang.String">
+				<entry key="slave" value-ref="slaveDataSource" />
+			</map>
+		</property>
+		<property name="defaultTargetDataSource" ref="masterDataSource" />
+	</bean>
+
+	<!-- 数据源拦截器 -->
+	<bean id="dataSourceAdvisor"
+		class="org.springframework.aop.support.RegexpMethodPointcutAdvisor">
+		<property name="advice">
+			<bean class="com.wenchanter.thales.core.aop.DataSourceAdvice">
+			</bean>
+		</property>
+		<property name="patterns">
+			<list>
+				<value>.*</value>
+			</list>
+		</property>
+	</bean>
+
+	<!-- 所有以DaoImpl结尾的bean都拦截以自动选择数据库 -->
+	<bean
+		class="org.springframework.aop.framework.autoproxy.BeanNameAutoProxyCreator">
+		<property name="beanNames" value="*DaoImpl" />
+		<property name="interceptorNames">
+			<list>
+				<value>dataSourceAdvisor</value>
+			</list>
+		</property>
+	</bean>
+
+	<!-- 发布软件相关任务线程池 -->
+	<bean id="taskExecutor"
+		class="org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor">
+		<property name="corePoolSize" value="5" />
+		<property name="maxPoolSize" value="10" />
+		<property name="queueCapacity" value="1000" />
+	</bean>
+</beans>

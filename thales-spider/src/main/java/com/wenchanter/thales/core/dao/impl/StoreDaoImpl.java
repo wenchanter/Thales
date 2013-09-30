@@ -25,7 +25,7 @@ public class StoreDaoImpl extends BaseDao implements StoreDao{
 	 */
 	public static void main(String[] args) {
 
-		ApplicationContext act = new ClassPathXmlApplicationContext("thales.xml");
+		ApplicationContext act = new ClassPathXmlApplicationContext("applicationContext.xml");
 		StoreDao s = (StoreDao)act.getBean("storeDaoImpl");
 		Store a = s.selectStore("a");
 		System.out.println(a.getName());
