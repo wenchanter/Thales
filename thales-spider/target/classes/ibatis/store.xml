@@ -6,7 +6,7 @@
 
     <sql id="store">
         select name, url, del
-        from access_white
+        from store
     </sql>
 
     <select id="selectStore" resultClass="store" parameterClass="java.lang.String">
