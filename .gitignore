@@ -4,5 +4,4 @@
 *.war
 *.ear
 thales-spider/target/
-thales-spider/target/classes/
 *.txt
