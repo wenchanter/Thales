@@ -4,4 +4,6 @@
 *.war
 *.ear
 thales-spider/target/
+.classpath
+.project
 *.txt
