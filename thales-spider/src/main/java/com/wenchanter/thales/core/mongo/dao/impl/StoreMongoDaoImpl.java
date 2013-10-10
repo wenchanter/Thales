@@ -1,5 +1,7 @@
 package com.wenchanter.thales.core.mongo.dao.impl;
 
+import java.math.BigInteger;
+
 import javax.annotation.Resource;
 
 import org.springframework.data.mongodb.core.MongoOperations;
@@ -27,6 +29,12 @@ public class StoreMongoDaoImpl implements StoreMongoDao {
 	public Store selectByName(String name) {
 
 		Query query = new Query(Criteria.where("name").is(name));
+		return mongoTemplate.findOne(query, Store.class);
+	}
+
+	@Override
+	public Store selectById(BigInteger id) {
+		Query query = new Query(Criteria.where("id").is(id));
 		return mongoTemplate.findOne(query, Store.class);
 	}
 

@@ -1,5 +1,7 @@
 package com.wenchanter.thales.core.mongo.service.impl;
 
+import java.math.BigInteger;
+
 import javax.annotation.Resource;
 
 import org.springframework.context.ApplicationContext;
@@ -26,6 +28,11 @@ public class StoreMongoServiceImpl implements StoreMongoService {
 		return StoreMongoDao.selectByName(name);
 	}
 
+	@Override
+	public Store findOneById(BigInteger id) {
+		return StoreMongoDao.selectById(id);
+	}
+
 	public static void main(String[] args) {
 
 		ApplicationContext act = new ClassPathXmlApplicationContext("applicationContext.xml");
@@ -35,7 +42,9 @@ public class StoreMongoServiceImpl implements StoreMongoService {
 //		store.setName("京东");
 //		store.setUrl("http://www.jd.com/");
 //		service.insert(store);
-		Store store = service.findOneByName("京东");
+//		Store store = service.findOneByName("京东");
+		Store store = service.findOneById(new BigInteger("25480760557308321443831263711"));
+		System.out.println(store.getId());
 		System.out.println(store.getDel());
 		System.out.println(store.getName());
 		System.out.println(store.getUrl());
