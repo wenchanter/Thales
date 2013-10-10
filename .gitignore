@@ -6,4 +6,5 @@
 thales-spider/target/
 .classpath
 .project
+.settings/
 *.txt
