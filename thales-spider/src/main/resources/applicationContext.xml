@@ -20,18 +20,22 @@
 	<!-- <context:annotation-config /> -->
 	<context:component-scan base-package="com.wenchanter.thales" />
 
-    <mongo:mongo host="220.181.8.57" port="27017"/>
-    <mongo:db-factory dbname="thales"/>
-    <bean id="mongoTemplate" class="org.springframework.data.mongodb.core.MongoTemplate">
-        <constructor-arg ref="mongo"/>
-        <constructor-arg name="databaseName" value="thales"/>
-    </bean>
-    
+	<!-- <mongo:mongo host="220.181.8.57" port="27017"/> -->
+	<!-- <mongo:db-factory dbname="thales"/> -->
+	<!-- <bean id="mongoTemplate" class="org.springframework.data.mongodb.core.MongoTemplate"> -->
+	<!-- <constructor-arg ref="mongo"/> -->
+	<!-- <constructor-arg name="databaseName" value="thales"/> -->
+	<!-- </bean> -->
+
 	<!-- ibatis集成 -->
-	<bean id="sqlMapClient" class="org.springframework.orm.ibatis.SqlMapClientFactoryBean">
-		<property name="configLocation" value="classpath:sql_map_config.xml" />
-		<property name="dataSource" ref="dataSource" />
-	</bean>
+	<!-- <bean id="sqlMapClient" class="org.springframework.orm.ibatis.SqlMapClientFactoryBean"> -->
+	<!-- <property name="configLocation" value="classpath:sql_map_config.xml" 
+		/> -->
+	<!-- <property name="dataSource" ref="dataSource" /> -->
+	<!-- </bean> -->
+
+	<import resource="applicationContext-mybatis.xml" />
+	<!-- <import resource="applicationContext-quartz.xml" /> -->
 
 	<!-- 数据库配置begin -->
 	<bean
@@ -42,32 +46,79 @@
 			</list>
 		</property>
 	</bean>
-	<!-- jdbc可用 <bean id="dataSource" class="org.springframework.jdbc.datasource.DriverManagerDataSource"> 
-		<property name="driverClassName" value="${main.master.jdbc.driverClass}" 
-		/> <property name="url" value="${main.master.jdbc.jdbcUrl}" /> <property 
-		name="username" value="${main.master.jdbc.user}" /> <property name="password" 
-		value="${main.master.jdbc.password}" /> </bean> -->
 
-	<bean id="parentDataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource">
-		<property name="maxPoolSize" value="${jdbc.maxPoolSize}" />
-		<property name="minPoolSize" value="${jdbc.minPoolSize}" />
-		<property name="initialPoolSize" value="${jdbc.initialPoolSize}" />
-		<property name="acquireIncrement" value="${jdbc.acquireIncrement}" />
-		<property name="maxIdleTime" value="${jdbc.maxIdleTime}" />
-		<property name="idleConnectionTestPeriod" value="${jdbc.idleConnectionTestPeriod}" />
-	</bean>
-	<bean id="masterDataSource" parent="parentDataSource">
-		<property name="driverClass" value="${main.master.jdbc.driverClass}" />
-		<property name="jdbcUrl" value="${main.master.jdbc.jdbcUrl}" />
-		<property name="user" value="${main.master.jdbc.user}" />
-		<property name="password" value="${main.master.jdbc.password}" />
-	</bean>
+	<!-- <bean id="parentDataSource" class="com.mchange.v2.c3p0.ComboPooledDataSource"> -->
+	<!-- <property name="maxPoolSize" value="${jdbc.maxPoolSize}" /> -->
+	<!-- <property name="minPoolSize" value="${jdbc.minPoolSize}" /> -->
+	<!-- <property name="initialPoolSize" value="${jdbc.initialPoolSize}" /> -->
+	<!-- <property name="acquireIncrement" value="${jdbc.acquireIncrement}" 
+		/> -->
+	<!-- <property name="maxIdleTime" value="${jdbc.maxIdleTime}" /> -->
+	<!-- <property name="idleConnectionTestPeriod" value="${jdbc.idleConnectionTestPeriod}" 
+		/> -->
+	<!-- </bean> -->
+	<!-- <bean id="masterDataSource" parent="parentDataSource"> -->
+	<!-- <property name="driverClass" value="${main.master.jdbc.driverClass}" 
+		/> -->
+	<!-- <property name="jdbcUrl" value="${main.master.jdbc.jdbcUrl}" /> -->
+	<!-- <property name="user" value="${main.master.jdbc.user}" /> -->
+	<!-- <property name="password" value="${main.master.jdbc.password}" /> -->
+	<!-- </bean> -->
 	<!-- main从数据源 -->
-	<bean id="slaveDataSource" parent="parentDataSource">
-		<property name="driverClass" value="${main.slave.jdbc.driverClass}" />
-		<property name="jdbcUrl" value="${main.slave.jdbc.jdbcUrl}" />
-		<property name="user" value="${main.slave.jdbc.user}" />
-		<property name="password" value="${main.slave.jdbc.password}" />
+	<!-- <bean id="slaveDataSource" parent="parentDataSource"> -->
+	<!-- <property name="driverClass" value="${main.slave.jdbc.driverClass}" 
+		/> -->
+	<!-- <property name="jdbcUrl" value="${main.slave.jdbc.jdbcUrl}" /> -->
+	<!-- <property name="user" value="${main.slave.jdbc.user}" /> -->
+	<!-- <property name="password" value="${main.slave.jdbc.password}" /> -->
+	<!-- </bean> -->
+
+	<!-- 主数据源 -->
+	<bean id="masterDataSource" class="com.alibaba.druid.pool.DruidDataSource"
+		init-method="init" destroy-method="close">
+		<property name="driverClassName" value="${master.jdbc.driverClassName}" />
+		<property name="url">
+			<value><![CDATA[${master.jdbc.url}]]></value>
+		</property>
+		<property name="username" value="${master.jdbc.username}" />
+		<property name="password" value="${master.jdbc.password}" />
+		<!-- Connection Pooling Info -->
+		<property name="maxActive" value="${jdbc.maxActive}" />
+		<property name="defaultAutoCommit" value="false" />
+		<!-- 空闲时检查 默认30s执行一次validation query -->
+		<property name="testWhileIdle" value="true" />
+		<property name="validationQuery" value="SELECT 'x'" />
+		<property name="testOnBorrow" value="false" />
+		<property name="testOnReturn" value="false" />
+		<!--初始化 -->
+		<property name="initialSize" value="2" />
+		<!-- 连接Idle一个小时后超时 -->
+		<property name="timeBetweenEvictionRunsMillis" value="3600000" />
+		<property name="minEvictableIdleTimeMillis" value="3600000" />
+	</bean>
+	<!-- 从数据源 -->
+
+	<bean id="slaveDataSource" class="com.alibaba.druid.pool.DruidDataSource"
+		init-method="init" destroy-method="close">
+		<property name="driverClassName" value="${slave.jdbc.driverClassName}" />
+		<property name="url">
+			<value><![CDATA[${slave.jdbc.url}]]></value>
+		</property>
+		<property name="username" value="${slave.jdbc.username}" />
+		<property name="password" value="${slave.jdbc.password}" />
+		<!-- Connection Pooling Info -->
+		<property name="maxActive" value="${jdbc.maxActive}" />
+		<property name="defaultAutoCommit" value="false" />
+		<!-- 空闲时检查 默认30s执行一次validation query -->
+		<property name="testWhileIdle" value="true" />
+		<property name="validationQuery" value="SELECT 'x'" />
+		<property name="testOnBorrow" value="false" />
+		<property name="testOnReturn" value="false" />
+		<!--初始化 -->
+		<property name="initialSize" value="2" />
+		<!-- 连接Idle一个小时后超时 -->
+		<property name="timeBetweenEvictionRunsMillis" value="3600000" />
+		<property name="minEvictableIdleTimeMillis" value="3600000" />
 	</bean>
 
 	<!-- 用于动态选择主、从数据库的数据源实现 -->
@@ -112,22 +163,22 @@
 		<property name="maxPoolSize" value="10" />
 		<property name="queueCapacity" value="1000" />
 	</bean>
-	
-    <!-- 邮件发送器 -->
-    <bean id="mailsender" class="org.springframework.mail.javamail.JavaMailSenderImpl">
-        <property name="host" value="smtp.163.com" />
-        <property name="username" value="send_mail_test_01@163.com" />
-        <property name="password" value="sendmail" />
-        <property name="javaMailProperties">
-            <props>
-                <prop key="mail.smtp.auth">true</prop>
-                <prop key="mail.smtp.timeout">25000</prop>
-            </props>
-        </property>
-    </bean>
-    <!-- 邮件信息 -->
-    <bean id="mailMessage" class="org.springframework.mail.SimpleMailMessage">
-        <property name="from" value="send_mail_test_01@163.com" />
-        <property name="subject" value="降价信息" />
-    </bean>
+
+	<!-- 邮件发送器 -->
+	<bean id="mailsender" class="org.springframework.mail.javamail.JavaMailSenderImpl">
+		<property name="host" value="smtp.163.com" />
+		<property name="username" value="send_mail_test_01@163.com" />
+		<property name="password" value="sendmail" />
+		<property name="javaMailProperties">
+			<props>
+				<prop key="mail.smtp.auth">true</prop>
+				<prop key="mail.smtp.timeout">25000</prop>
+			</props>
+		</property>
+	</bean>
+	<!-- 邮件信息 -->
+	<bean id="mailMessage" class="org.springframework.mail.SimpleMailMessage">
+		<property name="from" value="send_mail_test_01@163.com" />
+		<property name="subject" value="降价信息" />
+	</bean>
 </beans>

@@ -1,466 +1,260 @@
 package com.wenchanter.thales.spider.utils;
 
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.List;
+import java.io.InterruptedIOException;
+import java.net.UnknownHostException;
 import java.util.Map;
 
-import net.sf.json.JSONObject;
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLHandshakeException;
+import javax.servlet.http.HttpServletRequest;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpEntity;
+import org.apache.http.HttpEntityEnclosingRequest;
+import org.apache.http.HttpRequest;
 import org.apache.http.HttpResponse;
-import org.apache.http.NameValuePair;
+import org.apache.http.HttpStatus;
+import org.apache.http.NoHttpResponseException;
 import org.apache.http.client.HttpClient;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.HttpRequestRetryHandler;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.params.ClientPNames;
-import org.apache.http.entity.mime.MultipartEntity;
-import org.apache.http.entity.mime.content.FileBody;
-import org.apache.http.entity.mime.content.StringBody;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
-import org.apache.http.message.BasicNameValuePair;
-import org.apache.http.params.CoreConnectionPNames;
-import org.apache.http.params.CoreProtocolPNames;
+import org.apache.http.config.Registry;
+import org.apache.http.config.RegistryBuilder;
+import org.apache.http.conn.socket.ConnectionSocketFactory;
+import org.apache.http.conn.socket.PlainConnectionSocketFactory;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.entity.mime.MultipartEntityBuilder;
+import org.apache.http.entity.mime.content.ContentBody;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
+import org.apache.http.protocol.HttpContext;
+import org.apache.http.protocol.HttpCoreContext;
+import org.apache.http.ssl.SSLContexts;
 import org.apache.http.util.EntityUtils;
-import org.apache.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+/**
+ * @author wang_hui
+ */
 public class HttpUtils {
-	private static final int BUFFER_SIZE = 1024;
-	public static final String USER_AGENT = "Mozilla/5.0 (Windows; U; Windows NT 5.1; zh-CN; rv:1.9.1.4) Gecko/20091016 Firefox/3.5.4";
 
-	private static Logger logger = Logger.getLogger(HttpUtils.class);
+    private static Logger logger = LoggerFactory.getLogger(HttpUtils.class);
 
-	private static final String LOOKUP_URL = "http://itunes.apple.com/lookup?country=CN&id=";
+    private static HttpClient httpClient = null;
 
-	/**
-	 * 抓取指定url的内容.
-	 * @param url
-	 * @param encoding 网页编码.
-	 * @return
-	 */
-	public static String getContent(String url, String encoding) {
-		DefaultHttpClient httpClient = new DefaultHttpClient();
-		httpClient.setHttpRequestRetryHandler(new DefaultHttpRequestRetryHandler(3, false));
-		httpClient.getParams().setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 60000);
-		httpClient.getParams().setIntParameter(CoreConnectionPNames.SO_TIMEOUT, 60000);
+    static {
+        init();
+    }
 
-		String content = getContent(httpClient, url, encoding);
-		httpClient.getConnectionManager().shutdown();
-		return content;
-	}
+    private HttpUtils() {}
 
-	public static byte[] getContentBytes(String url) {
-		DefaultHttpClient httpClient = new DefaultHttpClient();
-		httpClient.setHttpRequestRetryHandler(new DefaultHttpRequestRetryHandler(3, false));
-		httpClient.getParams().setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 60000);
-		httpClient.getParams().setIntParameter(CoreConnectionPNames.SO_TIMEOUT, 60000);
+    /**
+     * 异常自动恢复处理, 使用HttpRequestRetryHandler接口实现请求的异常恢复
+     */
+    private static HttpRequestRetryHandler requestRetryHandler = new HttpRequestRetryHandler() {
+        // 自定义的恢复策略
+        @Override
+        public boolean retryRequest(IOException exception, int executionCount, HttpContext context) {
+            // 设置恢复策略，在发生异常时候将自动重试3次
+            if (executionCount >= 3) {
+                // 如果连接次数超过了最大值则停止重试
+                return false;
+            }
+            if (exception instanceof InterruptedIOException) {
+                // Timeout
+                return false;
+            }
+            if (exception instanceof UnknownHostException) {
+                // Unknown host
+                return false;
+            }
+            if (exception instanceof NoHttpResponseException) {
+                // 如果服务器连接失败重试
+                return true;
+            }
+            if (exception instanceof SSLHandshakeException) {
+                // 不要重试ssl连接异常
+                return false;
+            }
+            HttpRequest request = (HttpRequest) context.getAttribute(HttpCoreContext.HTTP_REQUEST);
+            boolean idempotent = (request instanceof HttpEntityEnclosingRequest);
+            if (!idempotent) {
+                // 重试，如果请求是考虑幂等
+                return true;
+            }
+            return false;
+        }
+    };
 
-		byte[] content = getContentBytes(httpClient, url);
-		httpClient.getConnectionManager().shutdown();
-		return content;
-	}
+    private static void init() {
+        try {
+            // 需要通过以下代码声明对https连接支持
+            SSLContext sslcontext =
+                    SSLContexts.custom().loadTrustMaterial(null, new TrustSelfSignedStrategy())
+                            .build();
+            HostnameVerifier hostnameVerifier =
+                    SSLConnectionSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER;
+            SSLConnectionSocketFactory sslsf =
+                    new SSLConnectionSocketFactory(sslcontext, hostnameVerifier);
+            Registry<ConnectionSocketFactory> socketFactoryRegistry =
+                    RegistryBuilder.<ConnectionSocketFactory>create()
+                            .register("http", PlainConnectionSocketFactory.getSocketFactory())
+                            .register("https", sslsf).build();
 
-	public static byte[] getContentBytes(DefaultHttpClient httpClient, String url) {
-		byte[] content = null;
-		try {
-			HttpGet httpget;
-			httpget = new HttpGet(url);
-			httpget.setHeader("User-Agent", USER_AGENT);
-			HttpResponse response = httpClient.execute(httpget);
-			HttpEntity entity = response.getEntity();
-			if (response.getStatusLine().getStatusCode() == 200) {
-				content = EntityUtils.toByteArray(entity);
-			}
-			EntityUtils.consume(entity);
-		} catch (Exception e) {
-			logger.error("Crawl url faild, url:" + url, e);
-		}
-		return content;
-	}
+            PoolingHttpClientConnectionManager cm =
+                    new PoolingHttpClientConnectionManager(socketFactoryRegistry);
+            /* 每个Route的最大线程数 */
+            cm.setDefaultMaxPerRoute(2000);
+            /* 最大线程数 */
+            cm.setMaxTotal(2000);
 
-	public static String getContent(HttpClient httpClient, String url, String encoding) {
-		String content = null;
-		try {
-			HttpGet httpget;
-			httpget = new HttpGet(url);
-			httpget.setHeader("User-Agent", USER_AGENT);
-			HttpResponse response = httpClient.execute(httpget);
-			HttpEntity entity = response.getEntity();
-			content = EntityUtils.toString(entity, encoding);
-			EntityUtils.consume(entity);
-		} catch (Exception e) {
-			logger.error("Crawl url faild, url:" + url, e);
-		}
-		return content;
-	}
+            RequestConfig config =
+                    RequestConfig.custom().setConnectTimeout(5 * 1000)
+                            .setConnectionRequestTimeout(5 * 1000).setSocketTimeout(10 * 1000)
+                            .build();
 
-	public static String getContent(DefaultHttpClient httpClient, String url, String encoding) {
-		String content = null;
-		try {
-			HttpGet httpget;
-			httpget = new HttpGet(url);
-			httpget.setHeader("User-Agent", USER_AGENT);
-			HttpResponse response = httpClient.execute(httpget);
-			HttpEntity entity = response.getEntity();
-			content = EntityUtils.toString(entity, encoding);
-			EntityUtils.consume(entity);
-		} catch (Exception e) {
-			logger.error("Crawl url faild, url:" + url, e);
-		}
-		return content;
-	}
+            httpClient =
+                    HttpClients.custom().setConnectionManager(cm).setDefaultRequestConfig(config)
+                            .setRetryHandler(requestRetryHandler).build();
 
-	public static String getContent(DefaultHttpClient httpClient, String url, String encoding,
-			Map<String, String> headers) {
-		String content = null;
-		try {
-			HttpGet httpget;
-			httpget = new HttpGet(url);
-			httpget.setHeader("User-Agent", USER_AGENT);
-			for (String key : headers.keySet()) {
-				httpget.setHeader(key, headers.get(key));
-			}
-			HttpResponse response = httpClient.execute(httpget);
-			HttpEntity entity = response.getEntity();
-			content = EntityUtils.toString(entity, encoding);
-			EntityUtils.consume(entity);
-		} catch (Exception e) {
-			logger.error("Crawl url faild, url:" + url, e);
-		}
-		return content;
-	}
+        } catch (Exception e) {
+            logger.error("httputil init error...", e);
+        }
+    }
 
-	/**
-	 * 用于手动处理重定向.
-	 * @param url
-	 * @return
-	 */
-	public static String getRedirectUrl(String url) {
-		return getRedirectUrl(url, null);
-	}
+    public static HttpClient getHttpClient() {
+        return httpClient;
+    }
 
-	/**
-	 * 用于手动处理重定向.
-	 * @param url
-	 * @return
-	 */
-	public static String getRedirectUrl(String url, String referer) {
-		DefaultHttpClient httpClient = new DefaultHttpClient();
-		httpClient.setHttpRequestRetryHandler(new DefaultHttpRequestRetryHandler(3, false));
-		httpClient.getParams().setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 15000);
-		httpClient.getParams().setIntParameter(CoreConnectionPNames.SO_TIMEOUT, 15000);
+    /**
+     * 返回来源地址.
+     *
+     * @param request 请求
+     * @return 来源地址
+     */
+    public static String getReferer(HttpServletRequest request, String defaultUrl) {
+        String referer = StringUtils.trimToEmpty(request.getHeader("referer"));
+        if (StringUtils.isBlank(referer) || referer.endsWith("login") || referer.endsWith("logout")) {
+            referer = defaultUrl;
+        }
+        return referer;
+    }
 
-		String redUrl = url;
-		try {
-			redUrl = getRedirectUrl(httpClient, url, referer);
-		} catch (Exception e) {
-			logger.error("follow redirct error, url" + url, e);
-		} finally {
-			httpClient.getConnectionManager().shutdown();
-		}
-		return redUrl;
-	}
+    /**
+     * GET方法获取接口返回值
+     *
+     * @param url 接口URL地址
+     * @return 返回值
+     */
+    @SuppressWarnings("resource")
+    public static String getApiResponse(String url) {
+        HttpGet get = null;
+        try {
+            get = new HttpGet(url);
+            CloseableHttpClient client = (CloseableHttpClient) getHttpClient();
 
-	/**
-	 * 用于手动处理重定向.
-	 * @param url
-	 * @return
-	 * @throws IOException
-	 */
-	public static String getRedirectUrl(DefaultHttpClient httpClient, String url) throws IOException {
-		return getRedirectUrl(httpClient, url, null);
-	}
+            HttpResponse response = client.execute(get);
+            if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+                HttpEntity entity = response.getEntity();
+                return EntityUtils.toString(entity, "utf-8");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            if (get != null) {
+                get.releaseConnection();
+            }
+        }
+        return "";
+    }
 
-	/**
-	 * 用于手动处理重定向.
-	 * @param url
-	 * @return
-	 * @throws IOException
-	 */
-	public static String getRedirectUrl(DefaultHttpClient httpClient, String url, String referer) throws IOException {
-		return getRedirectUrl(httpClient, url, referer, null);
-	}
+    /**
+     * 带Multipart参数的post数据提交.
+     *
+     * @param url URL地址
+     * @param parts 参数
+     * @return 调用结果
+     */
+    public static String postMultipartForm(String url, Map<String, ContentBody> parts) {
+        // TODO 未测试
+        HttpPost post = new HttpPost(url);
+        try {
+            HttpClient client = getHttpClient();
 
-	/**
-	 * 用于手动处理重定向.
-	 * @param url
-	 * @return
-	 * @throws IOException
-	 */
-	public static String getRedirectUrl(DefaultHttpClient httpClient, String url, String referer, String cookieStr)
-			throws IOException {
-		httpClient.getParams().setParameter(ClientPNames.HANDLE_REDIRECTS, false);
+            MultipartEntityBuilder reqEntity = MultipartEntityBuilder.create();
+            for (String name : parts.keySet()) {
+                reqEntity.addPart(name, parts.get(name));
+            }
+            post.setEntity(reqEntity.build());
+            HttpResponse response = client.execute(post);
+            if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+                HttpEntity entity = response.getEntity();
+                return EntityUtils.toString(entity, "utf-8");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            post.releaseConnection();
+        }
+        return "";
+    }
 
-		HttpGet httpget = new HttpGet(url);
+    /**
+     * 带StringEntity参数的post数据提交.
+     *
+     * @param url 接口地址
+     * @param parameters string entity 参数
+     * @return 调用结果
+     */
+    public static String postWithStringEntity(String url, String parameters) {
+        HttpPost post = new HttpPost(url);
+        try {
+            HttpClient client = getHttpClient();
 
-		String redUrl = url;
+            StringEntity reqEntity = new StringEntity(parameters, ContentType.APPLICATION_JSON);
+            post.setEntity(reqEntity);
+            HttpResponse response = client.execute(post);
+            if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+                HttpEntity entity = response.getEntity();
+                return EntityUtils.toString(entity, "utf-8");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            post.releaseConnection();
+        }
+        return "";
+    }
 
-		try {
-			httpget.setHeader("User-Agent", USER_AGENT);
-			if (StringUtils.isNotEmpty(referer)) {
-				httpget.setHeader("Referer", referer);
-			}
-			if (StringUtils.isNotEmpty(cookieStr)) {
-				httpget.setHeader("Cookie", cookieStr);
-			}
-			HttpResponse response = httpClient.execute(httpget);
-			int code = response.getStatusLine().getStatusCode();
-			if (code == 302 || code == 301) {
-				redUrl = response.getFirstHeader("Location").getValue();
-			}
-		} catch (IOException e) {
-			throw e;
-		} finally {
-			httpget.abort();
-		}
-		return redUrl;
-	}
-
-	/**
-	 * 下載文件.
-	 * @param filepath
-	 * @param url
-	 * @throws IOException
-	 */
-	public static long getFile(String filepath, String url) throws IOException {
-		try {
-			return getFile(filepath, url, null);
-		} catch (IOException e) {
-			throw e;
-		}
-	}
-
-	/**
-	 * 下載文件.
-	 * @param filepath
-	 * @param url
-	 * @param referer
-	 * @throws IOException
-	 */
-	public static long getFile(String filepath, String url, String referer) throws IOException {
-		DefaultHttpClient httpClient = new DefaultHttpClient();
-		httpClient.setHttpRequestRetryHandler(new DefaultHttpRequestRetryHandler(3, false));
-		httpClient.getParams().setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 60000);
-		httpClient.getParams().setIntParameter(CoreConnectionPNames.SO_TIMEOUT, 60000);
-		try {
-			return getFile(httpClient, filepath, url, referer);
-		} catch (IOException e) {
-			throw e;
-		} finally {
-			httpClient.getConnectionManager().shutdown();
-		}
-	}
-
-	/**
-	 * 下載文件.
-	 * @param httpClient
-	 * @param filepath
-	 * @param url
-	 * @param referer
-	 * @throws IOException
-	 */
-	public static long getFile(DefaultHttpClient httpClient, String filepath, String url, String referer)
-			throws IOException {
-		File dir = new File(filepath).getParentFile();
-		if (!dir.exists()) {
-			dir.mkdirs();
-		}
-		OutputStream out = new FileOutputStream(filepath);
-		try {
-			return getFile(httpClient, out, url, referer);
-		} catch (IOException e) {
-			throw e;
-		} finally {
-			out.close();
-		}
-	}
-
-	/**
-	 * 下載文件.
-	 * @param httpClient
-	 * @param out
-	 * @param url
-	 * @param referer
-	 * @throws IOException
-	 */
-	public static long getFile(DefaultHttpClient httpClient, OutputStream out, String url, String referer)
-			throws IOException {
-		HttpGet httpget;
-		httpget = new HttpGet(url);
-		httpget.setHeader("User-Agent", USER_AGENT);
-		if (StringUtils.isNotEmpty(referer)) {
-			httpget.setHeader("Referer", referer);
-		}
-		HttpResponse response = httpClient.execute(httpget);
-		InputStream in = response.getEntity().getContent();
-		int len = 0;
-		long size = 0;
-		byte[] b = new byte[BUFFER_SIZE];
-		while ((len = in.read(b)) != -1) {
-			out.write(b, 0, len);
-			size += len;
-		}
-		return size;
-	}
-
-	/**
-	 * post 数据到指定地址，并获取返回结果.
-	 * @throws IOException
-	 */
-	public static String postContent(String url, Map<String, String> data, String encoding) throws IOException {
-		DefaultHttpClient httpClient = new DefaultHttpClient();
-		// 重试
-		httpClient.setHttpRequestRetryHandler(new DefaultHttpRequestRetryHandler(3, false));
-		//超时
-		httpClient.getParams().setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 10000);
-		httpClient.getParams().setIntParameter(CoreConnectionPNames.SO_TIMEOUT, 10000);
-		HttpPost httppost = new HttpPost(url);
-		try {
-			List<NameValuePair> nvps = new ArrayList<NameValuePair>();
-			for (String key : data.keySet()) {
-				nvps.add(new BasicNameValuePair(key, data.get(key)));
-			}
-			httppost.setHeader("User-Agent", "Mozilla/5.0 (Windows; U; Windows NT 5.1; zh-CN; rv:1.9.1.2)");
-			httppost.setHeader("Referer", url);
-			httppost.getParams().setBooleanParameter(CoreProtocolPNames.USE_EXPECT_CONTINUE, false);
-			httppost.setEntity(new UrlEncodedFormEntity(nvps, encoding));
-			HttpResponse response = httpClient.execute(httppost);
-			return EntityUtils.toString(response.getEntity(), encoding);
-
-		} catch (IOException e) {
-			throw e;
-		} finally {
-			httpClient.getConnectionManager().shutdown();
-		}
-	}
-
-	/**
-	 * post 数据到指定地址，并获取返回结果. Multipart
-	 * @throws IOException
-	 */
-	public static String postMultipartContent(String url, Map<String, String> paramData, Map<String, File> fileData,
-			String encoding) throws IOException {
-		DefaultHttpClient httpClient = new DefaultHttpClient();
-		// 重试
-		httpClient.setHttpRequestRetryHandler(new DefaultHttpRequestRetryHandler(3, false));
-		//超时
-		httpClient.getParams().setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 15000);
-		httpClient.getParams().setIntParameter(CoreConnectionPNames.SO_TIMEOUT, 15000);
-		HttpPost httppost = new HttpPost(url);
-		try {
-			MultipartEntity reqEntity = new MultipartEntity();
-			for (String key : paramData.keySet()) {
-				reqEntity.addPart(key, new StringBody(paramData.get(key)));
-			}
-			for (String key : fileData.keySet()) {
-				reqEntity.addPart(key, new FileBody(fileData.get(key)));
-			}
-			httppost.setHeader("User-Agent", "Mozilla/5.0 (Windows; U; Windows NT 5.1; zh-CN; rv:1.9.1.2)");
-			httppost.setHeader("Referer", url);
-			httppost.getParams().setBooleanParameter(CoreProtocolPNames.USE_EXPECT_CONTINUE, false);
-			httppost.setEntity(reqEntity);
-			HttpResponse response = httpClient.execute(httppost);
-			return EntityUtils.toString(response.getEntity(), encoding);
-
-		} catch (IOException e) {
-			throw e;
-		} finally {
-			httpClient.getConnectionManager().shutdown();
-		}
-	}
-
-	/**
-	 * post 数据到指定地址，并获取返回结果. Multipart
-	 * @throws IOException
-	 */
-	public static String postMultipartContent(DefaultHttpClient httpClient, String url, Map<String, String> paramData,
-			Map<String, File> fileData, String encoding) throws IOException {
-		//DefaultHttpClient httpClient = new DefaultHttpClient();
-		//		// 重试
-		//		httpClient.setHttpRequestRetryHandler(new DefaultHttpRequestRetryHandler(3, false));
-		//		//超时
-		//		httpClient.getParams().setIntParameter(HttpConnectionParams.CONNECTION_TIMEOUT, 10000);
-		//		httpClient.getParams().setIntParameter(HttpConnectionParams.SO_TIMEOUT,10000);
-		HttpPost httppost = new HttpPost(url);
-		try {
-			MultipartEntity reqEntity = new MultipartEntity();
-			for (String key : paramData.keySet()) {
-				reqEntity.addPart(key, new StringBody(paramData.get(key)));
-			}
-			for (String key : fileData.keySet()) {
-				reqEntity.addPart(key, new FileBody(fileData.get(key)));
-			}
-			httppost.setHeader("User-Agent", "Mozilla/5.0 (Windows; U; Windows NT 5.1; zh-CN; rv:1.9.1.2)");
-			httppost.setHeader("Referer", url);
-			httppost.getParams().setBooleanParameter(CoreProtocolPNames.USE_EXPECT_CONTINUE, false);
-			httppost.setEntity(reqEntity);
-			HttpResponse response = httpClient.execute(httppost);
-			return EntityUtils.toString(response.getEntity(), encoding);
-
-		} catch (IOException e) {
-			throw e;
-		}
-	}
-
-	public static JSONObject lookupJSONById(DefaultHttpClient httpClient, int id) {
-		JSONObject result = null;
-		try {
-			HttpGet httpget;
-			httpget = new HttpGet(LOOKUP_URL + id);
-			httpget.setHeader("User-Agent", USER_AGENT);
-			HttpResponse response = httpClient.execute(httpget);
-			HttpEntity entity = response.getEntity();
-			String content = EntityUtils.toString(entity, "utf-8");
-			EntityUtils.consume(entity);
-			result = JSONObject.fromObject(content);
-			//result = JsonUtil.strToMap(content);JsonUtil.toJson(o)
-		} catch (Exception e) {
-			logger.error("Itunes API faild, url:" + LOOKUP_URL + id, e);
-		}
-		return result;
-	}
-
-	public static JSONObject lookupJSONById(int id) {
-		JSONObject result = null;
-		DefaultHttpClient httpClient = new DefaultHttpClient();
-		try {
-			httpClient.setHttpRequestRetryHandler(new DefaultHttpRequestRetryHandler(3, false));
-			httpClient.getParams().setIntParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, 60000);
-			httpClient.getParams().setIntParameter(CoreConnectionPNames.SO_TIMEOUT, 60000);
-			HttpGet httpget;
-			httpget = new HttpGet(LOOKUP_URL + id);
-			httpget.setHeader("User-Agent", USER_AGENT);
-			HttpResponse response = httpClient.execute(httpget);
-			HttpEntity entity = response.getEntity();
-			String content = EntityUtils.toString(entity, "utf-8");
-			EntityUtils.consume(entity);
-			result = JSONObject.fromObject(content);
-		} catch (Exception e) {
-			logger.error("Itunes API faild, url:" + LOOKUP_URL + id, e);
-		} finally {
-			httpClient.getConnectionManager().shutdown();
-		}
-		return result;
-	}
-
-	public static String getRedirectedUrl(String url) {
-		String tmpurl = null;
-		String redUrl = url;
-		while (true) {
-			tmpurl = getRedirectUrl(url, null);
-			if (url.equals(tmpurl)) {
-				break;
-			}
-			redUrl = tmpurl;
-		}
-		return redUrl;
-	}
-
+    /**
+     * 运用POST方法提交数据
+     *
+     * @param url 接口URL，参数封装在URL中
+     * @return 提交结果
+     */
+    public static String postWrappedUrl(String url) {
+        HttpPost post = new HttpPost(url);
+        try {
+            HttpClient client = getHttpClient();
+            HttpResponse response = client.execute(post);
+            if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+                HttpEntity entity = response.getEntity();
+                return EntityUtils.toString(entity, "utf-8");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            post.releaseConnection();
+        }
+        return "";
+    }
 }

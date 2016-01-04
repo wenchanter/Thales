@@ -12,4 +12,8 @@ public class ConstantUtils {
 
 	/** resin使用的项目目录 */
 	public static final String TARGET_BASE_PATH = PROJECT_BASE_PATH + "target/";
+	
+	// 暂时只支持中国区
+	public static final String APP_STORE_LOOK_UP_PATH = "http://itunes.apple.com/lookup?id=%scountry=CN";
+	
 }

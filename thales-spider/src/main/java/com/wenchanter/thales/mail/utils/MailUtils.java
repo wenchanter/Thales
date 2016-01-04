@@ -8,15 +8,12 @@ import java.util.regex.Pattern;
 import javax.mail.MessagingException;
 import javax.mail.internet.MimeMessage;
 
-import org.apache.commons.lang.ArrayUtils;
-import org.apache.commons.lang.StringUtils;
-import org.apache.log4j.Logger;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.mail.MailMessage;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
-
-import com.wenchanter.thales.utils.VelocityUtils;
 
 /**
  * 邮件工具
@@ -26,7 +23,7 @@ import com.wenchanter.thales.utils.VelocityUtils;
  */
 public class MailUtils {
 
-    private static Logger logger = Logger.getLogger(VelocityUtils.class);
+    // private static Logger logger = Logger.getLogger(VelocityUtils.class);
 
     /**
      * 发送文本格式的邮件
@@ -36,9 +33,9 @@ public class MailUtils {
      * @param templatePath
      * @param tenplateModel
      */
-    public static void sendTemplateTextMail(JavaMailSender sender, MailMessage message, String templatePath,
-            Map<String, Object> tenplateModel) {
-        String content = VelocityUtils.generateEmailContent(templatePath, tenplateModel);
+    public static void sendTemplateTextMail(String content, JavaMailSender sender,
+            MailMessage message, String templatePath, Map<String, Object> tenplateModel) {
+        // String content = VelocityUtils.generateEmailContent(templatePath, tenplateModel);
         if (message instanceof SimpleMailMessage) {
             SimpleMailMessage simpleMessage = (SimpleMailMessage) message;
             simpleMessage.setText(content);
@@ -48,16 +45,18 @@ public class MailUtils {
 
     /**
      * 发送html格式邮件
+     * 
      * @param sender
      * @param message
      * @param templatePath
      * @param tenplateModel
      * @throws MessagingException
      */
-    public static void sendTemplateHtmlMail(JavaMailSender sender, MailMessage message, String templatePath,
-            Map<String, Object> tenplateModel) throws MessagingException {
+    public static void sendTemplateHtmlMail(String content, JavaMailSender sender,
+            MailMessage message, String templatePath, Map<String, Object> tenplateModel)
+            throws MessagingException {
 
-        sendAttachmentMail(sender, message, templatePath, tenplateModel, null, null);
+        sendAttachmentMail(content, sender, message, templatePath, tenplateModel, null, null);
 
     }
 
@@ -72,9 +71,10 @@ public class MailUtils {
      * @param File 附件
      * @throws MessagingException
      */
-    public static void sendAttachmentMail(JavaMailSender sender, MailMessage message, String templatePath,
-            Map<String, Object> tenplateModel, String attachmentName, File File) throws MessagingException{
-        String content = VelocityUtils.generateEmailContent(templatePath, tenplateModel);
+    public static void sendAttachmentMail(String content, JavaMailSender sender,
+            MailMessage message, String templatePath, Map<String, Object> tenplateModel,
+            String attachmentName, File File) throws MessagingException {
+        // String content = VelocityUtils.generateEmailContent(templatePath, tenplateModel);
 
         if (message instanceof SimpleMailMessage) {
             SimpleMailMessage simpleMessage = (SimpleMailMessage) message;
@@ -111,7 +111,7 @@ public class MailUtils {
         } else {
             // 暂不支持其他MailMessage
             String err = "Not support! Please use SimpleMailMessage";
-            logger.info(err);
+            // logger.info(err);
             throw new IllegalArgumentException(err);
         }
 

@@ -1,47 +1,35 @@
 package com.wenchanter.thales.core.job;
 
+import java.util.concurrent.locks.ReentrantLock;
+
 import org.apache.log4j.Logger;
 
+/**
+ * 定时任务抽象类
+ * 
+ * @author wang_hui
+ *
+ */
 public abstract class AbstractJob {
-	private Logger logger = Logger.getLogger(this.getClass());
-    protected Boolean isRunning = false;
-    private Object lock = new Object();
-    private boolean userLog = true;
+
+    private Logger logger = Logger.getLogger(this.getClass());
+    private ReentrantLock lock = new ReentrantLock();
     
-    /**
-     * The entrance function of the job.
-     */
+    protected abstract void exec();
+    
     public void execute() {
-        synchronized (lock){
-            if (isRunning) {
-                logger.info("AbstractJob:" + this.getClass().getName() + " already running...");
-                return;
+        if (lock.tryLock()) {
+            logger.info("AbstractJob:" + this.getClass().getName() + " begin running...");
+            try {
+                exec();
+            } catch (Exception e) {
+                logger.error("job excute error: " + this.getClass().getName(), e);
+            } finally {
+                lock.unlock();
             }
-            if(userLog){
-            	logger.info("AbstractJob:" + this.getClass().getName() + " begin running...");
-            }
-            isRunning = true;
+        } else {
+            logger.info("AbstractJob:" + this.getClass().getName() + "is running...");
         }
-
-        try {
-            executeInternal();
-        } catch (Throwable e) {
-        	logger.error("job excute error ", e);
-        } finally {
-        	synchronized (lock) {
-                isRunning = false;
-            }
-        }
+        
     }
-
-    /**
-     * The internal function which focus on the business logic.
-     * 
-     * @throws Exception the exception.
-     */
-    protected abstract void executeInternal() throws Exception;
-    
-	public void setUserLog(boolean userLog) {
-		this.userLog = userLog;
-	}
 }

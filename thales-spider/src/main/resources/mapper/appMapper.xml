@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.wenchanter.thales.core.mapper.AppMapper">
+
+	<sql id="Columns">
+		name, ename, url, updatetime, prize,
+		cutoff, userid,
+		usermail, del, abs, createtime, type, appid
+	</sql>
+	<resultMap id="AppMap" type="com.wenchanter.thales.core.pojo.App">
+		<result column="id" property="id" />
+		<result column="name" property="name" />
+		<result column="ename" property="ename" />
+		<result column="url" property="url" />
+		<result column="updatetime" property="updatetime" />
+		<result column="prize" property="prize" />
+		<result column="cutoff" property="cutoff" />
+		<result column="userid" property="userid" />
+		<result column="usermail" property="usermail" />
+		<result column="del" property="del" />
+		<result column="abs" property="abs" />
+		<result column="createtime" property="createtime" />
+		<result column="type" property="type" />
+		<result column="appid" property="appid" />
+	</resultMap>
+
+	<insert id="add" parameterType="com.wenchanter.thales.core.pojo.App">
+		INSERT INTO app (
+		name, ename,
+		url, prize, cutoff, userid, usermail, abs, createtime, type, appid
+		)
+		VALUES (#{name},
+		#{ename}, #{url}, #{prize}, #{cutoff}, #{userid},
+		#{usermail}, #{abs},
+		now(), #{type}, #{appid})
+	</insert>
+
+	<update id="delete" parameterType="int">
+		UPDATE app SET del=1 WHERE
+		id=#{id}
+	</update>
+
+	<select id="query" resultMap="AppMap">
+		SELECT id,
+		<include refid="Columns" />
+		FROM app
+		where del = 0
+		<if test="userid != null">
+			and userid = #{userid}
+		</if>
+		<if test="type != null">
+		    and type = #{type}
+		</if>
+		ORDER BY id DESC LIMIT 20 OFFSET #{offset}
+	</select>
+
+	<select id="count" resultType="int">
+		SELECT COUNT(1) FROM app WHERE del
+		= 0
+	</select>
+</mapper>
